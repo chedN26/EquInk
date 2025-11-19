@@ -34,10 +34,34 @@
     <button type="submit">Upload & Analyze</button>
 </form>
 {% if result %}
-<h1>Result: {{ result }}% colored page</h1>
-<h1>B&W: {{ blk }}% black page</h1>
-<h1>Cost: {{cost}} pesos</h1>
+<h1>Overall Result: {{ result }}% colored page</h1>
+<h1>Overall B&W: {{ blk }}% black page</h1>
 {% endif %}
+<hr>
+<h3>Page-by-page Color %</h3>
+<ul>
+{% for p in pages_color %}
+    <li>Page {{ loop.index }}: {{ p }}%</li>
+{% endfor %}
+</ul>
+
+<h3>Page-by-page Black %</h3>
+<ul>
+{% for p in pages_black %}
+    <li>Page {{ loop.index }}: {{ p }}%</li>
+{% endfor %}
+</ul>
+<hr>
+<h3>Cost Per Page</h3>
+<ul>
+{% for cost in pages_cost %}
+    <li>Page {{ loop.index }}: ₱{{ cost }}</li>
+{% endfor %}
+</ul>
+
+<h3>Total Cost</h3>
+<p><strong>₱{{ total_cost }}</strong></p>
+<hr>
 
 <h2>Previous Uploads</h2>
 {% if history %}
