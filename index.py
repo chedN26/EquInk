@@ -45,7 +45,11 @@ def analyze_pdf(file_path):
             percentages.append(get_bw_percentage(temp_path))
         finally:
             os.remove(temp_path)
-    return round(sum(percentages)/len(percentages), 2)
+    return {
+    "pages": percentages,
+    "average": round(sum(percentages)/len(percentages), 2)
+}
+
 
 def analyze_blk_pdf(file_path):
     images = convert_from_path(file_path, poppler_path=r"C:\poppler-25.11.0\bin")
@@ -58,7 +62,11 @@ def analyze_blk_pdf(file_path):
             percentages.append(get_blk_percentage(temp_path))
         finally:
             os.remove(temp_path)
-    return round(sum(percentages)/len(percentages), 2)
+    return {
+    "pages": percentages,
+    "average": round(sum(percentages)/len(percentages), 2)
+}
+
 
 def analyze_docx(file_path):
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
@@ -137,32 +145,57 @@ def upload():
     
     try:
         if uploaded_file.filename.lower().endswith(".pdf"):
-            result = analyze_pdf(temp_path)
-            blk_result = analyze_blk_pdf(temp_path)
+            result_data = analyze_pdf(temp_path)
+            blk_data = analyze_blk_pdf(temp_path)
         elif uploaded_file.filename.lower().endswith(".docx"):
-            result = analyze_docx(temp_path)
-            blk_result = analyze_blk_pdf(temp_path)
+            result_data = analyze_docx(temp_path)
+            blk_data = analyze_blk_pdf(temp_path)
         else:
             result = "Invalid file type"
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
             
-    color_percent = round(100 - result, 2)
-    blk_percent = round(blk_result, 2)
+    color_percent = round(100 - result_data["average"], 2)
+    blk_percent = blk_data["average"]
+
+    page_colors = [round(100 - p, 2) for p in result_data["pages"]]
+    page_blacks = blk_data["pages"]
+    
+    
     cost = percentage_to_value(round(color_percent, 0)) + percentage_to_value_blk(round(blk_percent, 0))
+    page_costs = [percentage_to_value(round(color_percent, 0)) + percentage_to_value_blk(round(blk_percent, 0)) for color_percent in page_colors]
+    
+    
+    # TOTAL COST
+    total_cost = sum(page_costs)
+    
+    # AVERAGES (for display)
+    average_color = result_data["average"]
     
     # Save to database
     insert_upload(uploaded_file.filename,
                   uploaded_file.filename.split('.')[-1].lower(),
                   color_percent,
                   blk_percent,
-                  cost)
+                  total_cost)
     
     # Optionally fetch updated history
     history = get_upload_history()
     
-    return render_template("index.html", result=color_percent, cost=cost, history=history, blk=blk_percent)
+    return render_template(
+    "index.html",
+    result=color_percent,
+    cost=cost,
+    history=history,
+    blk=blk_percent,
+    pages_color=page_colors,
+    pages_black=page_blacks,
+    pages_cost=page_costs,
+    total_cost=total_cost,
+    avg_color=average_color,
+)
+
 
 if __name__ == "__main__":
     app.run(debug=True)
