@@ -22,6 +22,18 @@ def get_bw_percentage(image_path):
     bw_pixels = np.count_nonzero(bw_mask)
     return round((bw_pixels / total_pixels) * 100, 2)
 
+def get_blk_percentage(image_path):
+    img = cv2.imread(image_path)
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
+    brightness = 0.299*r + 0.587*g + 0.114*b
+    black_mask = brightness < 30
+    white_mask = brightness > 225
+    bw_mask = black_mask
+    total_pixels = img.shape[0] * img.shape[1]
+    bw_pixels = np.count_nonzero(bw_mask)
+    return round((bw_pixels / total_pixels) * 100, 2)
+
 def analyze_pdf(file_path):
     images = convert_from_path(file_path, poppler_path=r"C:\poppler-25.11.0\bin")
     percentages = []
@@ -35,12 +47,35 @@ def analyze_pdf(file_path):
             os.remove(temp_path)
     return round(sum(percentages)/len(percentages), 2)
 
+def analyze_blk_pdf(file_path):
+    images = convert_from_path(file_path, poppler_path=r"C:\poppler-25.11.0\bin")
+    percentages = []
+    for page in images:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+            page.save(temp_file.name, "PNG")
+            temp_path = temp_file.name
+        try:
+            percentages.append(get_blk_percentage(temp_path))
+        finally:
+            os.remove(temp_path)
+    return round(sum(percentages)/len(percentages), 2)
+
 def analyze_docx(file_path):
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
         temp_pdf_path = temp_pdf.name
     try:
         convert(file_path, temp_pdf_path)
         return analyze_pdf(temp_pdf_path)
+    finally:
+        if os.path.exists(temp_pdf_path):
+            os.remove(temp_pdf_path)
+            
+def analyze_blk_docx(file_path):
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_pdf:
+        temp_pdf_path = temp_pdf.name
+    try:
+        convert(file_path, temp_pdf_path)
+        return analyze_blk_pdf(temp_pdf_path)
     finally:
         if os.path.exists(temp_pdf_path):
             os.remove(temp_pdf_path)
@@ -69,6 +104,20 @@ def percentage_to_value(percent):
             return 0
         case _:
             return 0  # default if percentage out of bounds
+   
+        
+def percentage_to_value_blk(percent):
+    match percent:
+        case p if 76 <= p <= 100:
+            return 5
+        case p if 51 <= p <= 75:
+            return 4
+        case p if 26 <= p <= 50:
+            return 3
+        case p if 0 <= p <= 25:
+            return 2
+        case _:
+            return 0  # default if percentage out of bounds
 
 
 @app.route("/", methods=["GET"])
@@ -89,8 +138,10 @@ def upload():
     try:
         if uploaded_file.filename.lower().endswith(".pdf"):
             result = analyze_pdf(temp_path)
+            blk_result = analyze_blk_pdf(temp_path)
         elif uploaded_file.filename.lower().endswith(".docx"):
             result = analyze_docx(temp_path)
+            blk_result = analyze_blk_pdf(temp_path)
         else:
             result = "Invalid file type"
     finally:
@@ -98,18 +149,20 @@ def upload():
             os.remove(temp_path)
             
     color_percent = round(100 - result, 2)
-    cost = percentage_to_value(round(color_percent, 0)) + 2
+    blk_percent = round(blk_result, 2)
+    cost = percentage_to_value(round(color_percent, 0)) + percentage_to_value_blk(round(blk_percent, 0))
     
     # Save to database
     insert_upload(uploaded_file.filename,
                   uploaded_file.filename.split('.')[-1].lower(),
                   color_percent,
+                  blk_percent,
                   cost)
     
     # Optionally fetch updated history
     history = get_upload_history()
     
-    return render_template("index.html", result=color_percent, cost=cost, history=history)
+    return render_template("index.html", result=color_percent, cost=cost, history=history, blk=blk_percent)
 
 if __name__ == "__main__":
     app.run(debug=True)
